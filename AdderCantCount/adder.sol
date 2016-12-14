@@ -4,13 +4,18 @@ My first contracts in Solidity. An Adder contract able to add two numbers,
 e.g., on behalf the CantCount contract, for a small fee. Adder has a limited lifetime.
 CanCount can rate Adder after they interacted.
 */
-
 pragma solidity ^0.4.2;
+
+
+
+
+// My first contracts. Adder adds on behalf of Innumerate, for a small fee.
 
 contract Adder {
 
   // Variables
-  address public originator;
+  address public originator = msg.sender;
+  uint public creationTime = now;
   uint public rating ;
   uint public capacity;
   uint public price;
@@ -23,15 +28,20 @@ contract Adder {
   event PriceProposalReceived(uint price, address interlocutor);
 
   // Constructor
-  function Adder(){rating = 0 ; capacity = 10; originator = msg.sender;}
+  function Adder(){rating = 0 ; capacity = 10;}
 
   // Internal Methods
-  function remove() public{
-    if(msg.sender == originator){suicide(originator);}
-  }
   function costFunction() public returns(uint cost) {return (500-10*capacity); }
 
-  // Public Payable Method
+  // Modifiers
+  modifier onlyBy(address _account){
+    if (msg.sender != _account)
+        throw;
+    _;
+  }
+  
+  // Public Methods
+  function remove() public onlyBy(originator){suicide(originator);}
   function check() public payable returns(uint sum)  {
     PriceProposalReceived(msg.value, msg.sender);
     if (capacity == 0){
@@ -47,7 +57,10 @@ contract Adder {
 
   function add(uint first, uint second) public payable returns(uint sum)  {
     PriceProposalReceived(msg.value, msg.sender);
-    if (capacity == 0){throw;}
+    if (capacity == 0){
+      // remove();
+      throw;
+    }
     price = costFunction();
     if (msg.value < price) {return 0;}
     capacity -= 1;
@@ -57,7 +70,7 @@ contract Adder {
   }
 
 // Public Free Methods
-  function rateService(){
+  function rateService() public{
     if (previousInterlocutors[msg.sender] < 1){throw;}
     rating += 1;
     RatingReceived(msg.sender, rating);
@@ -76,7 +89,7 @@ contract CantCount {
   function CantCount(){lastComputedValue=0;}
 
   // Public functions
-  function setAdder(address anAdder){ selectedAdder = Adder(anAdder);}
+  function setAdder(address anAdder) public {selectedAdder = Adder(anAdder);}
 
   function load() public payable{gotPaid(msg.sender, msg.value);}
 
@@ -88,7 +101,7 @@ contract CantCount {
     lastComputedValue = selectedAdder.add.value(666).gas(50000)(2,3);
   }
 
-  function rateService(bool satisfactory){
+  function rateService(bool satisfactory) public {
     if (satisfactory){selectedAdder.rateService.gas(50000)();}
   }
 
