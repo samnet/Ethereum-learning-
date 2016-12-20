@@ -1,132 +1,120 @@
 
-
-
 // the two sellers makes a (semi) random offers (waiting 5 seconds each time), until one of them is successful
 
 
-
-
-
-
-
 /*
-Privacy,
-Flexibility,
-Approximation,
-Personalisation...
-
 how to make the relation viz. inputs, computed value, between the two contracts private?
 computing logic should not be in thecontract
 how to integrate the checking that it is correct to teh contract (rather than acting based upon the rating)
-should have thought of what characteristics we want to see that architecture acheive, before trying to build it.
 */
 pragma solidity ^0.4.2;
 
 contract Seller {
   // Variables
   address public originator = msg.sender;
-  uint public creationTime = now;
   uint public rating;
   mapping(address => uint) public previousInterlocutors;
-  // Modifiers
-  modifier onlyBy(address _account){
-    if (msg.sender != _account)
-        throw;
-    _;}
-  // Events that will be fired on changes.
+  bool public lastClientResponse;
+  // Modifiers & Events
+  modifier onlyBy(address _account){ if (msg.sender != _account){throw;}_;}
   event RatingReceived(address interlocutor, uint newRating);
-  event MoneyReceived(address interlocutor, uint newRating);
+  event MoneyReceived(uint monies);
   event OfferAccepted(uint price);
   event OfferRejected(uint price);
-  event SellerReceived(uint value);
 
   // Constructor / Destructor
-  function Seller() public {rating = 0;}
+  function Seller() public {rating = 0; lastClientResponse = false;}
   function remove() public onlyBy(originator){suicide(originator);}
+
   // Public Methods
-  function rateService() public {
+  function rateServiceUp() public {
     if (previousInterlocutors[msg.sender] < 1){throw;}
     rating += 1;
+    previousInterlocutors[msg.sender]-=1;
     RatingReceived(msg.sender, rating);
   }
-  function  makeOffer(address aBuyerAddr, uint offerPrice, uint result, uint first, uint second) public returns (bool) {
-    Buyer aBuyer = Buyer(aBuyerAddr);
-    if(aBuyer.computeForMoney.gas(75000)(offerPrice, result, first, second)==1){
-      previousInterlocutors[aBuyerAddr] +=1;
-      OfferAccepted(offerPrice);
-      return true;
-    }
-    OfferRejected(offerPrice);
-    return false;
+
+  function offerAccepted(bool _yes) public {lastClientResponse = _yes;}
+
+  function getLastAns() public returns(bool _r)  {return lastClientResponse;}
+
+  function  makeOffer(
+      address _aBuyerAddr, uint _offerPrice, uint _result,
+      uint _first, uint _second) public {
+    Buyer aBuyer = Buyer(_aBuyerAddr);
+    aBuyer.computeForMoney.gas(75000)(_offerPrice, _result, _first, _second);
   }
+
   function pay() public payable {
-    SellerReceived(msg.value);
+    MoneyReceived(msg.value);
+    previousInterlocutors[msg.sender] +=1;
   }
-
-
 }
 
-
 contract Buyer {
-  // variables
+  // Variables
   address public originator = msg.sender;
-  uint public creationTime = now;
   uint public maxPrice;
   uint public anInteger;
   uint public anotherInteger;
   bool public taskDone;
 
+  // Events and modifiers
   event BuyerFundingReceived(address from, uint amount);
   event OfferReceived(address from, uint amount);
   event OfferAccepted(address from, uint amount);
   event OfferRejected(address from, uint amount);
   event SolutionReceived(uint result);
   event MoneyPaidOut(uint price);
-  modifier onlyBy(address _account){
-    if (msg.sender != _account)
-        throw;
-    _;
-  }
+  modifier onlyBy(address _account){ if (msg.sender != _account){throw;}_;}
+
+  // Constructor/Destructor
+  function remove() public onlyBy(originator){suicide(originator);}
   function Buyer(uint _price, uint _first, uint _second) public {
     maxPrice = _price;
     anInteger=_first;
-    anotherInteger = _second;
-  }
+    anotherInteger = _second; }
+
+  // Public Methods
   function load() public payable{BuyerFundingReceived(msg.sender, msg.value);}
+
   function setParams(uint _price, uint _first, uint _second) public onlyBy(originator){
     maxPrice = _price;
     anInteger = _first;
-    anotherInteger = _second;
-  }
-  function rateService(bool satisfactory, address aSellerAddr) public onlyBy(originator){
-    if (satisfactory){
+    anotherInteger = _second;}
+
+  function setTaskDone(bool _done) public onlyBy(originator) {taskDone = _done;}
+
+  function rateService(bool _satisfactory, address _aSellerAddr) public onlyBy(originator){
+    if (_satisfactory){
       Seller aSeller;
-      aSeller = Seller(aSellerAddr);
-      aSeller.rateService.gas(50000)();
+      aSeller = Seller(_aSellerAddr);
+      aSeller.rateServiceUp.gas(50000)();
     }
   }
   function taskSpecs() public returns (uint) {return anInteger;}
-  function computeForMoney (uint offerPrice, uint result, uint first, uint second) public returns (int)  {
-    if (taskDone){return 0;}
-    OfferReceived(msg.sender,offerPrice);
-    if (offerPrice > maxPrice) {
-      OfferRejected(msg.sender, offerPrice);
-      return -1;
+  function computeForMoney (uint _offerPrice, uint _result, uint _first, uint _second) public {
+    OfferReceived(msg.sender, _offerPrice);
+    // if an agreement was already reached with someone (else)
+    if (taskDone){throw;}
+    // if price is too high
+    if (_offerPrice > maxPrice) {
+      OfferRejected(msg.sender, _offerPrice);
+      throw;
     }
-    if (anInteger !=first) {throw;}
-    if (anotherInteger !=second) {throw;}
-    OfferAccepted(msg.sender,offerPrice);
+    // if parameters are not what they should be
+    if (anInteger != _first || anotherInteger != _second) {throw;}
 
-    address aSellerAddr = msg.sender;
+    // if offer is accepted, notify seller and pay
+    OfferAccepted(msg.sender,_offerPrice);
     Seller aSeller;
     aSeller = Seller(msg.sender);
-    aSeller.pay.value(offerPrice).gas(30000)();
+    aSeller.offerAccepted.gas(50000)(true);
+    aSeller.pay.value(_offerPrice).gas(50000)();
+    MoneyPaidOut(_offerPrice);
 
-    if(msg.sender.send(offerPrice)){MoneyPaidOut(offerPrice);}
-
+    // no open to futher offesr
     taskDone = true;
-    SolutionReceived(result);
-    return 1;
+    SolutionReceived(_result);
   }
-  function remove() public onlyBy(originator){suicide(originator);}
 }
